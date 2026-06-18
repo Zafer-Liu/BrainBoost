@@ -1,0 +1,11 @@
+# Vercel 只部署前端，不需要这些
+src-tauri/
+mcp-server/
+logs/
+.claude/
+.workbuddy/
+DEVELOPMENT_NOTE.md
+OPTIMIZATION_REPORT.html
+VERIFICATION.md
+*.log
+start.bat
