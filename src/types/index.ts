@@ -45,7 +45,8 @@ export interface LLMConfig {
   provider: 'claude' | 'openai' | 'custom'
   apiKey: string
   model: string
-  baseURL?: string
+  baseURL?: string              // OpenAI-compatible base URL
+  claudeBaseURL?: string        // Anthropic API base URL (proxy / private deployment)
   disableThinking?: boolean
 }
 
@@ -56,4 +57,10 @@ export interface ChatMessage {
   content: string
   id: string
   createdAt: number
+}
+
+/** Locked nodes + cards that must be preserved across LLM re-analysis. */
+export interface LockedContext {
+  nodes: MindNode[]
+  cards: IdeaCard[]
 }

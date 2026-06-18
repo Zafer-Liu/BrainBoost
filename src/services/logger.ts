@@ -1,6 +1,8 @@
 type Level = 'debug' | 'info' | 'warn' | 'error'
 
-const LOG_SERVER = 'http://127.0.0.1:5174/log'
+// 日志服务地址：通过环境变量配置，留空则禁用日志上报
+// 开发环境运行 scripts/log-server.mjs（端口 5174）；生产环境留空避免无效请求
+const LOG_SERVER = import.meta.env.VITE_LOG_SERVER ?? ''
 
 const COLORS: Record<Level, string> = {
   debug: '#94a3b8',
@@ -19,6 +21,8 @@ function scheduleFlush() {
     flushTimer = null
     if (queue.length === 0) return
     const batch = queue.splice(0)
+    // 仅在配置了日志服务地址时上报，避免生产环境无效请求 / CORS 警告
+    if (!LOG_SERVER) return
     fetch(LOG_SERVER, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

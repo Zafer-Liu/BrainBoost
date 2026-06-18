@@ -436,30 +436,7 @@ function MindMapInner({ store, nodes: mindNodes, edges: mindEdges, topic,
     })
   }, [])
 
-  // ── Inline edit commit ───────────────────────────────────────────────────
-  function commitEdit() {
-    if (!inlineEdit) return
-    const val = inlineRef.current?.value?.trim() || inlineEdit.value.trim()
-    if (!val) { setInlineEdit(null); return }
-
-    if (inlineEdit.type === 'node') {
-      store.updateMindNode(inlineEdit.id, { label: val })
-      setNodes(prev => prev.map(n => {
-        if (n.id !== inlineEdit.id) return n
-        const { w, h } = nodeSize(val, 13)
-        return { ...n, data: { ...n.data, label: val }, style: { ...n.style, width: w, height: h } }
-      }))
-    } else {
-      const edgeIdx = inlineEdit.id.startsWith('ue-') ? parseInt(inlineEdit.id.slice(3), 10) : -1
-      if (edgeIdx >= 0) {
-        store.updateMindEdge(edgeIdx, { label: val })
-        setEdges(prev => prev.map(e =>
-          e.id === inlineEdit.id ? { ...e, data: { ...e.data, label: val } } : e
-        ))
-      }
-    }
-    setInlineEdit(null)
-  }
+  // ── Inline edit commit (merged into commitEditAndMaybeConnect below) ─────
 
   // ── Context menu actions ──────────────────────────────────────────────────
   function ctxDeleteNode() {

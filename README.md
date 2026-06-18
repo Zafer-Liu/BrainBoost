@@ -100,7 +100,7 @@ npm run dev
 | 构建工具 | Vite 6 | 极速 HMR，开发效率翻倍 |
 | 思维导图 | ReactFlow 11 | 交互式画布，支持自定义节点 |
 | 布局算法 | d3-force | 力导向图自动布局 |
-| AI 接入 | Anthropic SDK / OpenAI SDK | 支持 Claude / GPT / 兼容接口 |
+| AI 接入 | 原生 fetch SSE | 直接调用 Claude / OpenAI 兼容接口，流式输出 |
 | 文档导出 | docx + html-to-image | Word + 图片导出 |
 | 图标 | Lucide React | 简洁现代的图标库 |
 
@@ -119,7 +119,7 @@ BrainBoost/
 └── src/
     ├── styles/App.css
     ├── types/index.ts      # 全局类型定义
-    ├── store/appStore.ts   # 状态管理（Zustand）
+    ├── store/appStore.ts   # 状态管理（React hooks + localStorage）
     ├── services/
     │   ├── llmService.ts   # LLM 调用 + 流式解析
     │   ├── exportService.ts# 导出功能

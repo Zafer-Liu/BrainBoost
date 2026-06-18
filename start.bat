@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 title BrainSpark Dev Server
 cls
 
@@ -7,8 +8,8 @@ echo   BrainSpark - AI Brainstorming Assistant
 echo ================================================
 echo.
 
-:: Switch to project root (one level up from scripts\)
-cd /d "%~dp0.."
+:: Switch to script directory (project root, since start.bat lives at repo root)
+cd /d "%~dp0"
 
 :: Log file setup (relative to project root)
 if not exist "logs" mkdir logs

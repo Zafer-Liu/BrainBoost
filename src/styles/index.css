@@ -1,0 +1,20 @@
+/*
+ * BrainSpark 样式入口
+ *
+ * 原 App.css (2553 行单文件) 已按功能模块拆分。
+ * 此文件按原顺序 @import 各模块，保持 CSS 级联顺序不变。
+ * 修改样式时请定位到对应模块文件，不要在此文件直接写规则。
+ */
+
+@import './base.css';
+@import './layout.css';
+@import './panels.css';
+@import './mindmap.css';
+@import './ideas.css';
+@import './settings.css';
+@import './notes.css';
+@import './idea-edit.css';
+@import './mindmap-edit.css';
+@import './plan-modal.css';
+@import './kw-analysis.css';
+@import './scrollbar.css';

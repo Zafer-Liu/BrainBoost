@@ -1,0 +1,50 @@
+# ===== 依赖 =====
+node_modules/
+mcp-server/node_modules/
+
+# ===== 构建产物 =====
+dist/
+dist-electron/
+release/
+mcp-server/dist/
+
+# ===== Tauri =====
+# Rust 编译产物（几 GB，绝对不推）
+src-tauri/target/
+# Tauri 自动生成的 schema
+src-tauri/gen/schemas/
+# Tauri 缓存
+.tauri/
+# Windows MSI 打包工具下载
+src-tauri/WixTools/
+
+# ===== 日志 =====
+logs/
+*.log
+
+# ===== 环境变量（含密钥，禁止提交） =====
+.env
+.env.local
+.env.*.local
+
+# ===== 编辑器 / IDE =====
+.vscode/
+.idea/
+.claude
+*.swp
+*.swo
+
+# ===== 操作系统 =====
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===== AI 助手工作目录（内部数据，禁止提交） =====
+.workbuddy/
+
+# ===== 一次性报告（本地产物，不推） =====
+OPTIMIZATION_REPORT.html
+VERIFICATION.md
+
+# ===== 内部开发文档（按需保留） =====
+DEVELOPMENT_NOTE.md

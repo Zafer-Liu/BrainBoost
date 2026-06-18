@@ -95,6 +95,20 @@ export function SettingsView({ store }: Props) {
             </>
           )}
 
+          {config.provider === 'claude' && (
+            <>
+              <label className="form-label">Anthropic API Base URL（可选，留空使用官方）</label>
+              <input
+                type="text"
+                className="text-input"
+                placeholder="https://api.anthropic.com"
+                value={config.claudeBaseURL || ''}
+                onChange={e => setConfig(c => ({ ...c, claudeBaseURL: e.target.value.trim() || undefined }))}
+              />
+              <p className="settings-hint">用于私有部署或代理。留空则访问 https://api.anthropic.com</p>
+            </>
+          )}
+
           <label className="form-label">模型</label>
           {models.length > 0 ? (
             <select
@@ -119,7 +133,9 @@ export function SettingsView({ store }: Props) {
           {saved ? <><Check size={16} /> 已保存</> : '保存设置'}
         </button>
 
-        <p className="settings-note">API Key 仅保存在本地，不会上传到任何服务器。</p>
+        <p className="settings-note">
+          API Key 仅保存在本地（轻度混淆存储，非明文），不会上传到任何服务器。
+        </p>
       </main>
     </div>
   )

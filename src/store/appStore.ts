@@ -1,249 +1,283 @@
-import { useState, useCallback, useRef } from 'react'
+import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
 import type { Session, Keyword, IdeaCard, MindNode, MindEdge, LLMConfig, AppView } from '../types'
 import { logger } from '../services/logger'
+import {
+  safeSetJSON,
+  safeGetJSON,
+  safeGetObfuscated,
+  safeSetObfuscated,
+  type SafeStorageResult,
+} from '../services/safeStorage'
 
 const MOD = 'AppStore'
 
 const STORAGE_KEY_SESSIONS = 'brainspark_sessions'
 const STORAGE_KEY_CONFIG = 'brainspark_llm_config'
+const STORAGE_KEY_APIKEY = 'brainspark_llm_apikey'
+
+// ─── Persistence helpers ──────────────────────────────────────────
 
 function loadSessions(): Session[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_SESSIONS)
-    const sessions = raw ? JSON.parse(raw) : []
-    logger.info(MOD, `从 localStorage 加载会话`, { count: sessions.length })
-    return sessions
-  } catch (e) {
-    logger.error(MOD, '加载会话失败，返回空列表', { error: String(e) })
-    return []
-  }
+  const sessions = safeGetJSON<Session[]>(STORAGE_KEY_SESSIONS, [])
+  logger.info(MOD, `从 localStorage 加载会话`, { count: sessions.length })
+  return sessions
 }
 
-function saveSessions(sessions: Session[]) {
-  localStorage.setItem(STORAGE_KEY_SESSIONS, JSON.stringify(sessions))
-  logger.debug(MOD, `会话已持久化`, { count: sessions.length })
+function saveSessions(sessions: Session[]): SafeStorageResult {
+  return safeSetJSON(STORAGE_KEY_SESSIONS, sessions)
 }
 
+/**
+ * Load LLM config. API Key is stored separately in obfuscated form;
+ * config.apiKey in storage is left blank to avoid plaintext duplication.
+ */
 export function loadLLMConfig(): LLMConfig {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_CONFIG)
-    return raw ? JSON.parse(raw) : { provider: 'claude', apiKey: '', model: 'claude-sonnet-4-6' }
-  } catch {
-    return { provider: 'claude', apiKey: '', model: 'claude-sonnet-4-6' }
+  const stored = safeGetJSON<Partial<LLMConfig>>(STORAGE_KEY_CONFIG, {})
+  const apiKey = safeGetObfuscated(STORAGE_KEY_APIKEY, '')
+  return {
+    provider: stored.provider ?? 'claude',
+    apiKey,
+    model: stored.model ?? 'claude-sonnet-4-6',
+    baseURL: stored.baseURL,
+    claudeBaseURL: stored.claudeBaseURL,
+    disableThinking: stored.disableThinking,
   }
 }
 
-export function saveLLMConfig(config: LLMConfig) {
-  localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(config))
+export function saveLLMConfig(config: LLMConfig): { ok: boolean; error?: string } {
+  // Persist config without apiKey (kept separately, obfuscated)
+  const { apiKey, ...rest } = config
+  const r1 = safeSetJSON(STORAGE_KEY_CONFIG, rest)
+  safeSetObfuscated(STORAGE_KEY_APIKEY, apiKey)
+  return r1.ok ? { ok: true } : r1
 }
 
-export function useAppStore() {
-  const [view, setView] = useState<AppView>('home')
-  const [sessions, setSessions] = useState<Session[]>(loadSessions)
-  const [currentSession, setCurrentSession] = useState<Session | null>(null)
-  const [llmConfig, setLLMConfigState] = useState<LLMConfig>(loadLLMConfig)
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
+// ─── Store ────────────────────────────────────────────────────────
 
-  // Keep sessions in a ref so callbacks can read latest without stale closure
-  const sessionsRef = useRef(sessions)
-  sessionsRef.current = sessions
+export interface AppState {
+  // State
+  view: AppView
+  sessions: Session[]
+  currentSession: Session | null
+  llmConfig: LLMConfig
+  isAnalyzing: boolean
 
-  const updateSessions = useCallback((updated: Session[]) => {
-    setSessions(updated)
-    saveSessions(updated)
-  }, [])
+  // View
+  setView: (v: AppView) => void
 
-  const createSession = useCallback((topic: string): Session => {
-    logger.info(MOD, `新建会话`, { topic })
-    const session: Session = {
-      id: uuidv4(),
-      topic,
-      keywords: [],
-      ideaCards: [],
-      mindNodes: [],
-      mindEdges: [],
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    }
-    setSessions(prev => {
-      const updated = [session, ...prev]
-      saveSessions(updated)
-      return updated
-    })
-    setCurrentSession(session)
-    setView('session')
-    logger.debug(MOD, `会话已创建`, { id: session.id })
-    return session
-  }, [])
+  // Session lifecycle
+  createSession: (topic: string) => Session
+  openSession: (session: Session) => void
+  deleteSession: (id: string) => void
+  updateCurrentSession: (updater: (s: Session) => Session) => void
 
-  // Safe update: two independent setState calls (no nesting)
-  const updateCurrentSession = useCallback((updater: (s: Session) => Session) => {
-    setCurrentSession(prev => {
-      if (!prev) return prev
-      const updated = updater({ ...prev, updatedAt: Date.now() })
-      // Schedule sessions update separately (not nested inside updater)
-      setSessions(prevSessions => {
-        const next = prevSessions.map(s => s.id === updated.id ? updated : s)
-        saveSessions(next)
-        return next
-      })
-      return updated
-    })
-  }, [])
+  // Keyword CRUD
+  addKeyword: (text: string) => Keyword | undefined
+  removeKeyword: (id: string) => void
+  updateNotes: (notes: string) => void
 
-  const addKeyword = useCallback((text: string) => {
-    if (!text.trim()) return
-    const kw: Keyword = { id: uuidv4(), text: text.trim(), addedAt: Date.now() }
-    logger.debug(MOD, `添加关键词`, { text: kw.text, id: kw.id })
-    updateCurrentSession(s => ({ ...s, keywords: [...s.keywords, kw] }))
-    return kw
-  }, [updateCurrentSession])
+  // Mind map + idea cards bulk
+  updateMindMap: (nodes: MindNode[], edges: MindEdge[]) => void
+  updateIdeaCards: (cards: IdeaCard[]) => void
 
-  const removeKeyword = useCallback((id: string) => {
-    logger.debug(MOD, `删除关键词`, { id })
-    updateCurrentSession(s => ({ ...s, keywords: s.keywords.filter(k => k.id !== id) }))
-  }, [updateCurrentSession])
+  // IdeaCard CRUD
+  updateIdeaCard: (id: string, patch: Partial<IdeaCard>) => void
+  deleteIdeaCard: (id: string) => void
+  addIdeaCard: (card: IdeaCard) => void
 
-  const updateMindMap = useCallback((nodes: MindNode[], edges: MindEdge[]) => {
-    logger.info(MOD, `更新思维导图`, { nodes: nodes.length, edges: edges.length })
-    updateCurrentSession(s => ({ ...s, mindNodes: nodes, mindEdges: edges }))
-  }, [updateCurrentSession])
+  // MindNode / MindEdge CRUD
+  toggleNodeLock: (id: string) => void
+  toggleCardLock: (id: string) => void
+  updateMindNode: (id: string, patch: Partial<MindNode>) => void
+  deleteMindNode: (id: string) => void
+  addMindNode: (node: MindNode) => void
+  updateMindEdge: (idx: number, patch: Partial<MindEdge>) => void
+  deleteMindEdge: (idx: number) => void
+  addMindEdge: (edge: MindEdge) => void
 
-  const updateIdeaCards = useCallback((cards: IdeaCard[]) => {
-    logger.info(MOD, `更新方案卡片`, { count: cards.length })
-    updateCurrentSession(s => ({ ...s, ideaCards: cards }))
-  }, [updateCurrentSession])
+  // LLM config
+  setLLMConfig: (config: LLMConfig) => void
+  setIsAnalyzing: (v: boolean) => void
+}
 
-  // ── Notes ─────────────────────────────────────────────────────────────────
-  const updateNotes = useCallback((notes: string) => {
-    updateCurrentSession(s => ({ ...s, notes }))
-  }, [updateCurrentSession])
-
-  // ── IdeaCard edits ─────────────────────────────────────────────────────────
-  const updateIdeaCard = useCallback((id: string, patch: Partial<IdeaCard>) => {
-    updateCurrentSession(s => ({
-      ...s,
-      ideaCards: s.ideaCards.map(c => c.id === id ? { ...c, ...patch, editedAt: Date.now() } : c),
-    }))
-  }, [updateCurrentSession])
-
-  const deleteIdeaCard = useCallback((id: string) => {
-    updateCurrentSession(s => ({ ...s, ideaCards: s.ideaCards.filter(c => c.id !== id) }))
-  }, [updateCurrentSession])
-
-  const addIdeaCard = useCallback((card: IdeaCard) => {
-    updateCurrentSession(s => ({ ...s, ideaCards: [...s.ideaCards, card] }))
-  }, [updateCurrentSession])
-
-  // ── MindMap node/edge edits ────────────────────────────────────────────────
-  const toggleNodeLock = useCallback((id: string) => {
-    updateCurrentSession(s => ({
-      ...s,
-      mindNodes: s.mindNodes.map(n => n.id === id ? { ...n, locked: !n.locked } : n),
-    }))
-  }, [updateCurrentSession])
-
-  const toggleCardLock = useCallback((id: string) => {
-    updateCurrentSession(s => ({
-      ...s,
-      ideaCards: s.ideaCards.map(c => c.id === id ? { ...c, locked: !c.locked } : c),
-    }))
-  }, [updateCurrentSession])
-
-  const updateMindNode = useCallback((id: string, patch: Partial<MindNode>) => {
-    updateCurrentSession(s => ({
-      ...s,
-      mindNodes: s.mindNodes.map(n => n.id === id ? { ...n, ...patch } : n),
-    }))
-  }, [updateCurrentSession])
-
-  const deleteMindNode = useCallback((id: string) => {
-    updateCurrentSession(s => ({
-      ...s,
-      mindNodes: s.mindNodes.filter(n => n.id !== id),
-      mindEdges: s.mindEdges.filter(e => e.source !== id && e.target !== id),
-    }))
-  }, [updateCurrentSession])
-
-  const addMindNode = useCallback((node: MindNode) => {
-    updateCurrentSession(s => ({ ...s, mindNodes: [...s.mindNodes, node] }))
-  }, [updateCurrentSession])
-
-  const updateMindEdge = useCallback((idx: number, patch: Partial<MindEdge>) => {
-    updateCurrentSession(s => ({
-      ...s,
-      mindEdges: s.mindEdges.map((e, i) => i === idx ? { ...e, ...patch } : e),
-    }))
-  }, [updateCurrentSession])
-
-  const deleteMindEdge = useCallback((idx: number) => {
-    updateCurrentSession(s => ({
-      ...s,
-      mindEdges: s.mindEdges.filter((_, i) => i !== idx),
-    }))
-  }, [updateCurrentSession])
-
-  const addMindEdge = useCallback((edge: MindEdge) => {
-    updateCurrentSession(s => ({ ...s, mindEdges: [...s.mindEdges, edge] }))
-  }, [updateCurrentSession])
-
-  const openSession = useCallback((session: Session) => {
-    logger.info(MOD, `打开会话`, { id: session.id, topic: session.topic })
-    setCurrentSession(session)
-    setView('session')
-  }, [])
-
-  const deleteSession = useCallback((id: string) => {
-    logger.info(MOD, `删除会话`, { id })
-    setSessions(prev => {
-      const updated = prev.filter(s => s.id !== id)
-      saveSessions(updated)
-      return updated
-    })
-    setCurrentSession(prev => {
-      if (prev?.id === id) {
-        setView('home')
-        return null
+export const useAppStore = create<AppState>()((set) => {
+  /** Update currentSession AND mirror it into sessions[] + localStorage. Single source of truth. */
+  const patchCurrentSession = (updater: (s: Session) => Session) => {
+    set(state => {
+      if (!state.currentSession) return state
+      const updated = updater({ ...state.currentSession, updatedAt: Date.now() })
+      const sessions = state.sessions.map(s => s.id === updated.id ? updated : s)
+      const r = saveSessions(sessions)
+      if (!r.ok) {
+        logger.warn(MOD, '会话持久化失败（配额满），仅保留内存副本', { error: r.error })
       }
-      return prev
+      return { currentSession: updated, sessions }
     })
-  }, [])
-
-  const setLLMConfig = useCallback((config: LLMConfig) => {
-    logger.info(MOD, `保存 LLM 配置`, { provider: config.provider, model: config.model, hasKey: !!config.apiKey })
-    setLLMConfigState(config)
-    saveLLMConfig(config)
-  }, [])
+  }
 
   return {
-    view, setView,
-    sessions,
-    currentSession,
-    llmConfig,
-    isAnalyzing, setIsAnalyzing,
-    createSession,
-    updateCurrentSession,
-    addKeyword,
-    removeKeyword,
-    updateNotes,
-    updateMindMap,
-    updateIdeaCards,
-    updateIdeaCard,
-    deleteIdeaCard,
-    addIdeaCard,
-    toggleNodeLock,
-    toggleCardLock,
-    updateMindNode,
-    deleteMindNode,
-    addMindNode,
-    updateMindEdge,
-    deleteMindEdge,
-    addMindEdge,
-    openSession,
-    deleteSession,
-    setLLMConfig,
-  }
-}
+    view: 'home',
+    sessions: loadSessions(),
+    currentSession: null,
+    llmConfig: loadLLMConfig(),
+    isAnalyzing: false,
 
-export type AppStore = ReturnType<typeof useAppStore>
+    setView: (v) => set({ view: v }),
+
+    createSession: (topic) => {
+      logger.info(MOD, `新建会话`, { topic })
+      const session: Session = {
+        id: uuidv4(),
+        topic,
+        keywords: [],
+        ideaCards: [],
+        mindNodes: [],
+        mindEdges: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+      set(state => {
+        const sessions = [session, ...state.sessions]
+        const r = saveSessions(sessions)
+        if (!r.ok) logger.warn(MOD, '新建会话持久化失败', { error: r.error })
+        return { sessions, currentSession: session, view: 'session' as AppView }
+      })
+      logger.debug(MOD, `会话已创建`, { id: session.id })
+      return session
+    },
+
+    openSession: (session) => {
+      logger.info(MOD, `打开会话`, { id: session.id, topic: session.topic })
+      set({ currentSession: session, view: 'session' })
+    },
+
+    deleteSession: (id) => {
+      logger.info(MOD, `删除会话`, { id })
+      set(state => {
+        const sessions = state.sessions.filter(s => s.id !== id)
+        const r = saveSessions(sessions)
+        if (!r.ok) logger.warn(MOD, '删除会话后持久化失败', { error: r.error })
+        const currentSession = state.currentSession?.id === id ? null : state.currentSession
+        const view: AppView = state.currentSession?.id === id ? 'home' : state.view
+        return { sessions, currentSession, view }
+      })
+    },
+
+    updateCurrentSession: patchCurrentSession,
+
+    addKeyword: (text) => {
+      if (!text.trim()) return
+      const kw: Keyword = { id: uuidv4(), text: text.trim(), addedAt: Date.now() }
+      logger.debug(MOD, `添加关键词`, { text: kw.text, id: kw.id })
+      patchCurrentSession(s => ({ ...s, keywords: [...s.keywords, kw] }))
+      return kw
+    },
+
+    removeKeyword: (id) => {
+      logger.debug(MOD, `删除关键词`, { id })
+      patchCurrentSession(s => ({ ...s, keywords: s.keywords.filter(k => k.id !== id) }))
+    },
+
+    updateNotes: (notes) => {
+      patchCurrentSession(s => ({ ...s, notes }))
+    },
+
+    updateMindMap: (nodes, edges) => {
+      logger.info(MOD, `更新思维导图`, { nodes: nodes.length, edges: edges.length })
+      patchCurrentSession(s => ({ ...s, mindNodes: nodes, mindEdges: edges }))
+    },
+
+    updateIdeaCards: (cards) => {
+      logger.info(MOD, `更新方案卡片`, { count: cards.length })
+      patchCurrentSession(s => ({ ...s, ideaCards: cards }))
+    },
+
+    updateIdeaCard: (id, patch) => {
+      patchCurrentSession(s => ({
+        ...s,
+        ideaCards: s.ideaCards.map(c => c.id === id ? { ...c, ...patch, editedAt: Date.now() } : c),
+      }))
+    },
+
+    deleteIdeaCard: (id) => {
+      patchCurrentSession(s => ({ ...s, ideaCards: s.ideaCards.filter(c => c.id !== id) }))
+    },
+
+    addIdeaCard: (card) => {
+      patchCurrentSession(s => ({ ...s, ideaCards: [...s.ideaCards, card] }))
+    },
+
+    toggleNodeLock: (id) => {
+      patchCurrentSession(s => ({
+        ...s,
+        mindNodes: s.mindNodes.map(n => n.id === id ? { ...n, locked: !n.locked } : n),
+      }))
+    },
+
+    toggleCardLock: (id) => {
+      patchCurrentSession(s => ({
+        ...s,
+        ideaCards: s.ideaCards.map(c => c.id === id ? { ...c, locked: !c.locked } : c),
+      }))
+    },
+
+    updateMindNode: (id, patch) => {
+      patchCurrentSession(s => ({
+        ...s,
+        mindNodes: s.mindNodes.map(n => n.id === id ? { ...n, ...patch } : n),
+      }))
+    },
+
+    deleteMindNode: (id) => {
+      patchCurrentSession(s => ({
+        ...s,
+        mindNodes: s.mindNodes.filter(n => n.id !== id),
+        mindEdges: s.mindEdges.filter(e => e.source !== id && e.target !== id),
+      }))
+    },
+
+    addMindNode: (node) => {
+      patchCurrentSession(s => ({ ...s, mindNodes: [...s.mindNodes, node] }))
+    },
+
+    updateMindEdge: (idx, patch) => {
+      patchCurrentSession(s => ({
+        ...s,
+        mindEdges: s.mindEdges.map((e, i) => i === idx ? { ...e, ...patch } : e),
+      }))
+    },
+
+    deleteMindEdge: (idx) => {
+      patchCurrentSession(s => ({
+        ...s,
+        mindEdges: s.mindEdges.filter((_, i) => i !== idx),
+      }))
+    },
+
+    addMindEdge: (edge) => {
+      patchCurrentSession(s => ({ ...s, mindEdges: [...s.mindEdges, edge] }))
+    },
+
+    setLLMConfig: (config) => {
+      logger.info(MOD, `保存 LLM 配置`, {
+        provider: config.provider,
+        model: config.model,
+        hasKey: !!config.apiKey,
+        hasClaudeBaseURL: !!config.claudeBaseURL,
+      })
+      const r = saveLLMConfig(config)
+      if (!r.ok) logger.warn(MOD, 'LLM 配置持久化失败', { error: r.error })
+      set({ llmConfig: config })
+    },
+
+    setIsAnalyzing: (v) => set({ isAnalyzing: v }),
+  }
+})
+
+// Backward-compat: many components expect `useAppStore()` to return an object
+// with all state + methods. Zustand's `useAppStore()` (no selector) does exactly that.
+// Components using `store.xxx` props-drilling continue to work unchanged.
+
+// Components receive the full state object via props; AppState is the exact shape.
+export type AppStore = AppState

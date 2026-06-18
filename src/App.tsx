@@ -2,7 +2,7 @@ import { useAppStore } from './store/appStore'
 import { HomeView } from './components/layout/HomeView'
 import { SessionView } from './components/layout/SessionView'
 import { SettingsView } from './components/layout/SettingsView'
-import './styles/App.css'
+import './styles/index.css'
 
 export default function App() {
   const store = useAppStore()

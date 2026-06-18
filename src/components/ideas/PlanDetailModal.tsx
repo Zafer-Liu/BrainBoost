@@ -4,6 +4,9 @@ import {
   X, Sparkles, Send, Loader2, RotateCcw,
   Copy, Check, PenLine, MessageSquare, Maximize2, Minimize2,
 } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import rehypeSanitize from 'rehype-sanitize'
 import type { IdeaCard, ChatMessage, LLMConfig } from '../../types'
 import { writePlanDetail, chatWithPlan } from '../../services/llmService'
 
@@ -19,79 +22,22 @@ interface Props {
   onSave?: (cardId: string, doc: string, chat: ChatMessage[]) => void
 }
 
-// ── Markdown renderer with table support ──────────────────────────
-function renderMd(text: string): string {
-  // Split into lines for table detection
-  const lines = text.split('\n')
-  const out: string[] = []
-  let i = 0
+// ── Markdown renderer (XSS-safe via rehype-sanitize) ──────────────
+// Replaces the hand-rolled renderMd + dangerouslySetInnerHTML approach.
+// LLM output is untrusted content; this prevents <script>, onerror=, javascript: URLs etc.
 
-  while (i < lines.length) {
-    const line = lines[i]
-
-    // Detect table: line with | chars and next line is separator (|---|)
-    if (/^\|.+\|/.test(line)) {
-      const sep = lines[i + 1] ?? ''
-      if (/^\|[\s\-|:]+\|/.test(sep)) {
-        // It's a table
-        const headers = line.split('|').slice(1, -1).map(h => h.trim())
-        out.push('<table class="plan-md-table"><thead><tr>')
-        headers.forEach(h => out.push(`<th>${applyInline(h)}</th>`))
-        out.push('</tr></thead><tbody>')
-        i += 2  // skip header + separator
-        while (i < lines.length && /^\|.+\|/.test(lines[i])) {
-          const cells = lines[i].split('|').slice(1, -1).map(c => c.trim())
-          out.push('<tr>')
-          cells.forEach(c => out.push(`<td>${applyInline(c)}</td>`))
-          out.push('</tr>')
-          i++
-        }
-        out.push('</tbody></table>')
-        continue
-      }
-    }
-
-    // Headings (#### h5, ### h4, ## h3, # h2)
-    if (/^#### /.test(line)) { out.push(`<h5>${applyInline(line.slice(5))}</h5>`); i++; continue }
-    if (/^### /.test(line))  { out.push(`<h4>${applyInline(line.slice(4))}</h4>`); i++; continue }
-    if (/^## /.test(line))   { out.push(`<h3>${applyInline(line.slice(3))}</h3>`); i++; continue }
-    if (/^# /.test(line))    { out.push(`<h2>${applyInline(line.slice(2))}</h2>`); i++; continue }
-
-    // Horizontal rule
-    if (/^---+$/.test(line.trim())) { out.push('<hr />'); i++; continue }
-
-    // List items — collect consecutive
-    if (/^[-•*] /.test(line) || /^\d+\. /.test(line)) {
-      out.push('<ul>')
-      while (i < lines.length && (/^[-•*] /.test(lines[i]) || /^\d+\. /.test(lines[i]))) {
-        const item = lines[i].replace(/^[-•*] /, '').replace(/^\d+\. /, '')
-        out.push(`<li>${applyInline(item)}</li>`)
-        i++
-      }
-      out.push('</ul>')
-      continue
-    }
-
-    // Empty line → paragraph break
-    if (line.trim() === '') {
-      out.push('')
-      i++
-      continue
-    }
-
-    // Normal paragraph line
-    out.push(`<p>${applyInline(line)}</p>`)
-    i++
-  }
-
-  return out.join('\n')
-}
-
-function applyInline(text: string): string {
-  return text
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/`(.+?)`/g, '<code>$1</code>')
+function Markdown({ children }: { children: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      rehypePlugins={[rehypeSanitize]}
+      components={{
+        table: ({ node, ...props }) => <table className="plan-md-table" {...props} />,
+      }}
+    >
+      {children}
+    </ReactMarkdown>
+  )
 }
 
 // ── Resize hook ───────────────────────────────────────────────────
@@ -404,10 +350,9 @@ export function PlanDetailModal({
                         </div>
                       )}
                       {displayContent ? (
-                        <div
-                          className="plan-doc-rendered"
-                          dangerouslySetInnerHTML={{ __html: renderMd(displayContent) }}
-                        />
+                        <div className="plan-doc-rendered">
+                          <Markdown>{displayContent}</Markdown>
+                        </div>
                       ) : !isGenerating ? (
                         <div className="plan-empty">
                           <Sparkles size={32} strokeWidth={1} />
@@ -449,10 +394,13 @@ export function PlanDetailModal({
                     <div key={msg.id} className={`plan-msg plan-msg--${msg.role}`}>
                       {msg.role === 'assistant' ? (
                         <div className="plan-msg-content">
-                          <div
-                            className="plan-msg-rendered"
-                            dangerouslySetInnerHTML={{ __html: renderMd(msg.content) || '<span style="opacity:0.4">…</span>' }}
-                          />
+                          {msg.content ? (
+                            <div className="plan-msg-rendered">
+                              <Markdown>{msg.content}</Markdown>
+                            </div>
+                          ) : (
+                            <span style={{ opacity: 0.4 }}>…</span>
+                          )}
                           {msg.content && !isChatting && (
                             <button
                               className="plan-apply-btn"

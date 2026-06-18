@@ -1,0 +1,127 @@
+/* ===== Idea Cards ===== */
+.idea-cards-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.cards-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-muted);
+}
+.cards-empty p { font-size: 13px; text-align: center; max-width: 180px; }
+
+.cards-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.idea-card {
+  padding: 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  border-left: 3px solid var(--accent);
+  transition: border-color 0.15s;
+}
+.idea-card--clickable { cursor: pointer; }
+.idea-card--clickable:hover { border-left-color: var(--accent-hover); box-shadow: 0 2px 8px rgba(91,94,247,0.1); }
+.idea-card--active { border-left-color: var(--accent); background: #5b5ef708; box-shadow: 0 2px 12px rgba(91,94,247,0.15); }
+.idea-card--locked { border-left-color: #f59e0b; background: #fffbeb; box-shadow: 0 2px 8px #f59e0b22; }
+
+.idea-node-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-3);
+  padding: 2px 6px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.idea-hint {
+  font-size: 11px;
+  color: var(--accent);
+  margin-top: 6px;
+  opacity: 0.8;
+}
+
+@keyframes cardEnter {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.card-enter { animation: cardEnter 0.3s ease forwards; }
+
+@keyframes flowDash {
+  from { stroke-dashoffset: 20; }
+  to   { stroke-dashoffset: 0; }
+}
+
+/* Allow edge labels to receive pointer events so hover works */
+.react-flow__edgelabel-renderer {
+  pointer-events: none;
+}
+.react-flow__edgelabel-renderer > * {
+  pointer-events: none;
+}
+/* The inner div sets pointer-events:all itself, but we need the container to not block */
+
+.badge.streaming {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #5b5ef714;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.idea-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.idea-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.idea-card h4 { font-size: 14px; font-weight: 600; line-height: 1.3; }
+.idea-card p { font-size: 13px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 10px; }
+
+.idea-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  color: var(--text-muted);
+}
+.idea-tag {
+  padding: 2px 8px;
+  background: var(--bg-3);
+  border-radius: 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
